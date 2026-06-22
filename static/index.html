@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Auth Engine Playground</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="min-h-screen bg-[#0B0B0C] text-zinc-100 font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
+
+  <header class="border-b border-zinc-800 bg-[#121214] px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+    <div class="flex items-center gap-3">
+      <div class="h-3 w-3 rounded-full bg-indigo-500 shadow-[0_0_12px_rgba(99,102,241,0.5)]"></div>
+      <h1 class="text-sm font-semibold tracking-wider text-zinc-300 uppercase">Auth Engine Playground</h1>
+    </div>
+    
+    <div class="flex items-center gap-3 bg-zinc-900/60 border border-zinc-800 px-4 py-2 rounded-xl text-xs">
+      <span class="text-zinc-500">Session Status:</span>
+      <div id="session-status" class="flex items-center gap-1.5 text-zinc-400">
+        <span class="h-1.5 w-1.5 rounded-full bg-zinc-600"></span>
+        <span>Guest Context</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="flex min-h-[calc(100vh-69px)]">
+    
+    <nav id="sidebar" class="w-80 border-r border-zinc-800 bg-[#0E0E10] p-4 flex flex-col gap-1.5 shrink-0">
+      <div class="px-3 mb-2 text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Router Endpoints</div>
+      </nav>
+
+    <main class="flex-1 bg-[#0B0B0C] p-8 flex flex-col lg:flex-row gap-6 max-w-7xl mx-auto w-full">
+      
+      <div class="flex-1 flex flex-col gap-6">
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <span id="endpoint-method" class="text-xs font-bold px-2 py-0.5 rounded border tracking-wide"></span>
+            <h2 id="endpoint-path" class="text-lg font-mono font-medium tracking-tight text-zinc-200"></h2>
+          </div>
+          <p id="endpoint-description" class="text-sm text-zinc-400"></p>
+        </div>
+
+        <div id="auth-notice" class="hidden bg-rose-500/5 border border-rose-500/10 rounded-xl p-4 text-xs text-rose-400">
+          Notice: Authentication token or session missing for this route wrapper.
+        </div>
+        <div id="role-notice" class="hidden bg-amber-500/5 border border-amber-500/10 rounded-xl p-4 text-xs text-amber-400">
+          Notice: Client role context does not match route permission constraints.
+        </div>
+
+        <div id="param-container" class="hidden bg-[#121214] border border-zinc-800 rounded-xl p-5">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-4">Request Parameters</h3>
+          <div id="inputs-wrapper" class="flex flex-col gap-4"></div>
+        </div>
+
+        <button onclick="handleExecute()" class="w-full bg-zinc-100 text-zinc-900 font-semibold text-xs py-3 rounded-xl hover:bg-white active:scale-[0.99] transition-all">
+          Execute Request
+        </button>
+      </div>
+
+      <div class="w-full lg:w-[480px] flex flex-col shrink-0">
+        <div class="bg-[#121214] border border-zinc-800 rounded-xl h-full flex flex-col overflow-hidden min-h-[350px]">
+          
+          <div class="border-b border-zinc-800 px-4 py-3 bg-[#151518] flex justify-between items-center">
+            <span class="text-xs font-bold uppercase tracking-wider text-zinc-400">Response Buffer</span>
+            <div id="response-status-wrapper" class="hidden flex items-center gap-2">
+              <span id="status-indicator" class="h-2 w-2 rounded-full"></span>
+              <span id="response-status" class="text-xs font-mono font-bold"></span>
+            </div>
+          </div>
+
+          <div class="flex-1 p-5 font-mono text-xs overflow-y-auto bg-[#0E0E10] text-zinc-300">
+            <pre id="response-block" class="whitespace-pre-wrap leading-relaxed text-zinc-600 italic select-none">No active logs. Execute query.</pre>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    const ENDPOINTS = [
+      { id: 'signup', method: 'POST', path: '/signup', authRequired: false, roleRequired: null, description: 'Register a new user account context.', bodyFields: ['email', 'password'], mockResponse: { success: true, message: "User registered successfully" } },
+      { id: 'signin', method: 'POST', path: '/signin', authRequired: false, roleRequired: null, description: 'Authenticate user and receive session cookies.', bodyFields: ['email', 'password'], mockResponse: (inputs) => ({ cookies: ['accessToken=mock_token', 'refreshToken=mock_token'], data: { user_id: "usr_9482", email: inputs.email || "user@example.com", role: inputs.email?.includes('admin') ? 'admin' : 'user' } }) },
+      { id: 'me', method: 'GET', path: '/me', authRequired: true, roleRequired: null, description: 'Fetch current authenticated user details from req.user context.', mockResponse: (auth) => auth ? { data: auth } : { error: "Unauthorized" } },
+      { id: 'refresh', method: 'POST', path: '/refresh-token', authRequired: true, roleRequired: null, description: 'Refresh the current access token using the refresh cookie.', mockResponse: { success: true, message: "access token refreshed" } },
+      { id: 'revoke', method: 'PATCH', path: '/refresh-token/revoke/:user_id', authRequired: true, roleRequired: 'admin', description: 'Revoke target user refresh tokens. Requires Admin privileges.', paramFields: ['user_id'], mockResponse: { success: true } },
+      { id: 'signout', method: 'POST', path: '/signout', authRequired: true, roleRequired: null, description: 'Clear authentication cookies and terminate session.', mockResponse: { success: true } },
+      { id: 'delete', method: 'DELETE', path: '/delete', authRequired: true, roleRequired: null, description: 'Permanently delete the authenticated user profile.', mockResponse: { success: true } }
+    ];
+
+    let activeTab = ENDPOINTS[0];
+    let currentUser = null;
+
+    function getMethodStyles(method) {
+      switch (method) {
+        case 'POST': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+        case 'GET': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+        case 'PATCH': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+        case 'DELETE': return 'bg-rose-500/10 text-rose-400 border-rose-500/20';
+        default: return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20';
+      }
+    }
+
+    function updateSessionUI() {
+      const wrapper = document.getElementById('session-status');
+      if (currentUser) {
+        const isAdmin = currentUser.role === 'admin';
+        wrapper.className = "flex items-center gap-3";
+        wrapper.innerHTML = `
+          <div class="flex items-center gap-1.5">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+            <span class="text-zinc-300 font-medium">${currentUser.email}</span>
+          </div>
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${isAdmin ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' : 'bg-zinc-800 text-zinc-400'}">
+            ${currentUser.role}
+          </span>
+          <button onclick="clearSession()" class="text-zinc-500 hover:text-rose-400 transition-colors ml-1 font-semibold">Clear</button>
+        `;
+      } else {
+        wrapper.className = "flex items-center gap-1.5 text-zinc-400";
+        wrapper.innerHTML = `<span class="h-1.5 w-1.5 rounded-full bg-zinc-600"></span><span>Guest Context</span>`;
+      }
+      renderWarnings();
+    }
+
+    function clearSession() {
+      currentUser = null;
+      updateSessionUI();
+      document.getElementById('response-status-wrapper').classList.add('hidden');
+      document.getElementById('response-block').className = "h-full flex items-center justify-center text-zinc-600 italic select-none";
+      document.getElementById('response-block').innerText = "No active logs. Execute query.";
+    }
+
+    function renderSidebar() {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.innerHTML = '<div class="px-3 mb-2 text-[10px] font-bold tracking-widest text-zinc-500 uppercase">Router Endpoints</div>';
+      
+      ENDPOINTS.forEach(ep => {
+        const isActive = activeTab.id === ep.id;
+        const btn = document.createElement('button');
+        btn.className = `w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all ${isActive ? 'bg-zinc-900 border-zinc-700 text-zinc-100' : 'bg-transparent border-transparent text-zinc-400 hover:bg-zinc-900/40 hover:text-zinc-200'}`;
+        
+        btn.innerHTML = `
+          <div class="flex items-center gap-2.5 min-w-0">
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border tracking-wide w-14 text-center shrink-0 ${getMethodStyles(ep.method)}">${ep.method}</span>
+            <span class="text-xs font-mono truncate tracking-tight">${ep.path}</span>
+          </div>
+          ${ep.roleRequired ? `<span class="text-[9px] bg-amber-500/10 text-amber-500 border border-amber-500/20 px-1 rounded uppercase font-semibold">${ep.roleRequired}</span>` : ''}
+        `;
+        
+        btn.onclick = () => selectEndpoint(ep);
+        sidebar.appendChild(btn);
+      });
+    }
+
+    function renderWarnings() {
+      const authNotice = document.getElementById('auth-notice');
+      const roleNotice = document.getElementById('role-notice');
+
+      if (activeTab.authRequired && !currentUser) authNotice.classList.remove('hidden');
+      else authNotice.classList.add('hidden');
+
+      if (activeTab.roleRequired === 'admin' && currentUser && currentUser.role !== 'admin') roleNotice.classList.remove('hidden');
+      else roleNotice.classList.add('hidden');
+    }
+
+    function selectEndpoint(ep) {
+      activeTab = ep;
+      renderSidebar();
+      
+      document.getElementById('endpoint-method').className = `text-xs font-bold px-2 py-0.5 rounded border tracking-wide ${getMethodStyles(ep.method)}`;
+      document.getElementById('endpoint-method').innerText = ep.method;
+      document.getElementById('endpoint-path').innerText = ep.path;
+      document.getElementById('endpoint-description').innerText = ep.description;
+
+      renderWarnings();
+
+      const paramContainer = document.getElementById('param-container');
+      const wrapper = document.getElementById('inputs-wrapper');
+      wrapper.innerHTML = '';
+
+      const hasParams = ep.paramFields && ep.paramFields.length > 0;
+      const hasBody = ep.bodyFields && ep.bodyFields.length > 0;
+
+      if (hasParams || hasBody) {
+        paramContainer.classList.remove('hidden');
+        
+        ep.paramFields?.forEach(field => {
+          wrapper.innerHTML += `
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-mono text-zinc-400 flex items-center gap-2"><span>:${field}</span><span class="text-[10px] text-amber-400 bg-amber-500/5 px-1 rounded border border-amber-500/10">params</span></label>
+              <input type="text" data-field="${field}" placeholder="usr_9482" class="bg-[#18181B] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700 transition-colors">
+            </div>`;
+        });
+
+        ep.bodyFields?.forEach(field => {
+          wrapper.innerHTML += `
+            <div class="flex flex-col gap-1.5">
+              <label class="text-xs font-mono text-zinc-400 flex items-center gap-2"><span>${field}</span><span class="text-[10px] text-emerald-400 bg-emerald-500/5 px-1 rounded border border-emerald-500/10">body</span></label>
+              <input type="${field === 'password' ? 'password' : 'text'}" data-field="${field}" placeholder="${field === 'email' ? 'admin@app.com or user@app.com' : 'values'}" class="bg-[#18181B] border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 font-mono focus:outline-none focus:border-zinc-700 transition-colors">
+            </div>`;
+        });
+      } else {
+        paramContainer.classList.add('hidden');
+      }
+    }
+
+    function handleExecute() {
+      const statusWrapper = document.getElementById('response-status-wrapper');
+      const indicator = document.getElementById('status-indicator');
+      const statusText = document.getElementById('response-status');
+      const responseBlock = document.getElementById('response-block');
+
+      if (activeTab.authRequired && !currentUser) {
+        renderTerminal(401, 'Unauthorized', { error: "Authentication required for this route." });
+        return;
+      }
+
+      if (activeTab.roleRequired && currentUser?.role !== activeTab.roleRequired) {
+        renderTerminal(403, 'Forbidden', { error: `Requires role: ${activeTab.roleRequired}` });
+        return;
+      }
+
+      // Collect inputs
+      const inputs = {};
+      document.querySelectorAll('#inputs-wrapper input').forEach(input => {
+        inputs[input.getAttribute('data-field')] = input.value;
+      });
+
+      let responseBody = typeof activeTab.mockResponse === 'function' 
+        ? activeTab.mockResponse(activeTab.id === 'signin' ? inputs : currentUser)
+        : activeTab.mockResponse;
+
+      if (activeTab.id === 'signin') {
+        currentUser = responseBody.data;
+        updateSessionUI();
+      } else if (activeTab.id === 'signout' || activeTab.id === 'delete') {
+        currentUser = null;
+        updateSessionUI();
+      }
+
+      renderTerminal(200, 'OK', responseBody);
+    }
+
+    function renderTerminal(status, statusMsg, body) {
+      const statusWrapper = document.getElementById('response-status-wrapper');
+      const indicator = document.getElementById('status-indicator');
+      const statusText = document.getElementById('response-status');
+      const responseBlock = document.getElementById('response-block');
+
+      statusWrapper.classList.remove('hidden');
+      statusText.innerText = `${status} ${statusMsg}`;
+      
+      if (status === 200) {
+        indicator.className = "h-2 w-2 rounded-full bg-emerald-400";
+        statusText.className = "text-xs font-mono font-bold text-emerald-400";
+      } else {
+        indicator.className = "h-2 w-2 rounded-full bg-rose-400";
+        statusText.className = "text-xs font-mono font-bold text-rose-400";
+      }
+
+      responseBlock.className = "whitespace-pre-wrap leading-relaxed text-zinc-300";
+      responseBlock.innerText = JSON.stringify(body, null, 2);
+    }
+
+    // Initialize App
+    selectEndpoint(ENDPOINTS[0]);
+    updateSessionUI();
+  </script>
+</body>
+</html>

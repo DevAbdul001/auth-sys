@@ -132,7 +132,7 @@ exports.refreshAccessToken = async ( req, res, next )=> {
     const { user_id } = req.user;
     const ip = req.ip;
 
-    console.log(user_id);
+    // console.log(user_id);
 
     try {
         const token = req.cookies.refreshToken;
