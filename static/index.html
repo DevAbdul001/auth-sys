@@ -369,6 +369,18 @@
     .btn-execute:hover { background-color: #ffffff; }
     .btn-execute:active { transform: scale(0.99); }
 
+    .endpoint-instructions {
+      margin-top: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #818cf8; /* indigo-400 */
+      background-color: rgba(99, 102, 241, 0.05);
+      border: 1px solid rgba(99, 102, 241, 0.15);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      line-height: 1.4;
+    }
+
     /* Output Terminal Pane */
     .terminal-pane {
       width: 100%;
@@ -471,6 +483,15 @@
 
     <main>
       <div class="workspace-pane">
+        <div>
+          <div class="endpoint-header">
+            <span id="endpoint-method" class="method-badge"></span>
+            <h2 id="endpoint-path" class="endpoint-title"></h2>
+          </div>
+          <p id="endpoint-description" class="endpoint-desc"></p>
+          
+          <div id="endpoint-instructions" class="endpoint-instructions"></div>
+        </div>
         <div>
           <div class="endpoint-header">
             <span id="endpoint-method" class="method-badge"></span>
