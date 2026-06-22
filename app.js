@@ -11,14 +11,7 @@ const app = express();
 
 
 app.use(
-    helmet({
-        contentSecurityPolicy: {
-            directives: {
-                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-                "script-src": ["'self'", "https://cdn.tailwindcss.com"],
-            },
-        },
-    })
+    helmet()
 );
 
 const allowedOrigins = process.env.CORS_ORIGINS;
