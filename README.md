@@ -1,36 +1,63 @@
-
----
-
 # Authentication System (Node.js + Express)
 
-A backend authentication system built with Node.js and Express, focused on secure session management, token lifecycle control and maintainable API architecture.
+A backend authentication system built with Node.js and Express, focused on secure session management, token lifecycle control, and maintainable API architecture.
 
 ---
 
 ## Overview
 
-This project implements a complete authentication flow:
+This project implements a complete authentication workflow with access and refresh token management, session revocation, role-based authorization, audit logging, and cookie-based authentication.
 
-* User registration and login
-* Access and refresh token handling
-* Refresh token rotation and revocation
-* Role-based access control (RBAC)
-* Authentication event logging
-* Cookie-based session management
-
-The primary goal is to model how production authentication systems handle identity, sessions and security boundaries beyond basic JWT login implementations.
+The system is designed around common patterns used in production applications, including refresh token rotation, server-side session control, layered architecture, and containerized deployment.
 
 ---
 
 ## Tech Stack
 
-* Node.js + Express
+* Node.js
+* Express
 * MySQL
-* JWT (access + refresh tokens)
-* Argon2 (password hashing)
-* HTTP-only cookies
-* Zod (validation)
-* Helmet, CORS, rate limiting
+* JWT (Access and Refresh Tokens)
+* Argon2
+* HTTP-only Cookies
+* Zod
+* Helmet
+* CORS
+* Express Rate Limit
+* Jest
+* Supertest
+* Docker
+* Docker Compose
+
+---
+
+## Architecture
+
+```
+Browser / API Client
+         |
+         v
++------------------+
+|   Express API    |
++------------------+
+         |
+         v
++------------------+
+|      MySQL       |
++------------------+
+```
+
+Containerized deployment:
+
+```
+Docker Compose
+│
+├── api
+│   └── Node.js + Express
+│
+└── mysql
+    └── MySQL 8
+```
 
 ---
 
@@ -38,150 +65,223 @@ The primary goal is to model how production authentication systems handle identi
 
 ### 1. Internal vs External User IDs
 
-The database uses auto-increment integer IDs internally, while UUIDs are exposed externally via the API.
+The database uses auto-increment integer IDs internally while exposing UUIDs through the API.
 
 ```
-users:
-  id (INT PRIMARY KEY)
-  uuid (CHAR36, public identifier)
+users
+├── id     (INT)
+└── uuid   (CHAR36)
 ```
 
-API responses expose only UUIDs.
+API consumers never interact with internal database IDs.
 
-**Rationale:**
+**Rationale**
 
 * Prevents user enumeration
-* Decouples API contracts from database structure
+* Decouples database structure from API contracts
+* Allows internal schema changes without affecting clients
 
 ---
 
 ### 2. Access and Refresh Tokens
 
-* Access tokens: short-lived (e.g. 15 minutes)
-* Refresh tokens: long-lived (e.g. days), stored and managed
+The authentication flow uses short-lived access tokens and long-lived refresh tokens.
 
-**Rationale:**
+```
+Access Token
+├── Short-lived
+└── Used for API authorization
 
-* Limits exposure window for compromised tokens
-* Enables controlled session renewal
+Refresh Token
+├── Long-lived
+└── Used to obtain new access tokens
+```
+
+**Rationale**
+
+* Reduces the impact of token compromise
+* Allows controlled session renewal
+* Improves overall session security
 
 ---
 
-### 3. Token Persistence Strategy
+### 3. Refresh Token Persistence
 
-Refresh tokens are stored server-side instead of relying on fully stateless JWT sessions.
+Refresh tokens are stored and managed server-side.
 
-**Rationale:**
+**Rationale**
 
-* Enables logout and revocation
-* Allows invalidation of compromised sessions
+* Supports token revocation
+* Enables logout functionality
 * Provides visibility into active sessions
+* Allows compromised sessions to be invalidated
 
 ---
 
 ### 4. Cookie-Based Authentication
 
-Tokens are delivered via HTTP-only cookies.
+Authentication tokens are delivered using HTTP-only cookies.
 
 ```
-Client → Server: login request
-Server → Client:
-  Set-Cookie: accessToken
-  Set-Cookie: refreshToken
+Client ---> Login Request
+
+Server ---> Set-Cookie: accessToken
+         ---> Set-Cookie: refreshToken
 ```
 
-Cookies are automatically attached on subsequent requests.
+Cookies are automatically attached to subsequent requests.
 
-**Rationale:**
+**Rationale**
 
-* Reduces XSS token exposure risk
-* Simplifies browser-based session handling
+* Reduces exposure to client-side JavaScript
+* Simplifies browser authentication flows
+* Improves session security
 
 ---
 
 ### 5. Authentication Logging
 
-Authentication events are logged, including:
+Authentication-related actions are recorded.
+
+Logged events include:
 
 * Successful logins
 * Failed login attempts
-* Token refresh events
+* Token refreshes
 * Logout actions
-* Token revocation events
+* Token revocations
 
-**Rationale:**
+**Rationale**
 
 * Improves observability
-* Supports security auditing and anomaly detection
+* Supports auditing
+* Assists troubleshooting and incident investigation
 
 ---
 
 ### 6. Layered Architecture
 
-The system follows a layered structure:
+The application follows a layered architecture pattern.
 
 ```
-Routes → Controllers → Services → Repositories → Utils
+Routes
+   |
+Controllers
+   |
+Services
+   |
+Repositories
+   |
+Database
 ```
 
-* Routes: request validation and routing
-* Controllers: request handling and response formatting
-* Services: business logic (auth flows, token logic)
-* Repositories: database access layer
-* Utils: helpers (JWT, hashing, logging)
+Responsibilities:
 
-**Rationale:**
+* Routes: routing and middleware composition
+* Controllers: request handling
+* Services: business logic
+* Repositories: database operations
+* Utilities: shared helpers and infrastructure concerns
+
+**Rationale**
 
 * Separation of concerns
-* Easier testing and maintainability
-* Clear boundaries between business logic and infrastructure
+* Easier testing
+* Improved maintainability
+* Reduced coupling between layers
 
 ---
 
 ## Features
 
-* User signup and signin
-* Protected routes (/me)
+* User registration
+* User authentication
+* Protected routes
 * Refresh token rotation
-* Logout with session invalidation
+* Session revocation
 * User deletion
+* Role-based access control (RBAC)
+* Authentication audit logging
 * Rate limiting
 * Secure HTTP headers
+* Cookie-based authentication
+* Dockerized deployment
+* Interactive authentication testing UI
+
+---
+
+## Docker Support
+
+The application can be started entirely through Docker Compose.
+
+Services:
+
+```
+docker-compose.yml
+
+├── api
+│   └── Node.js + Express Application
+│
+└── mysql
+    └── MySQL 8 Database
+```
+
+The API service waits for the database health check before startup.
+
+Database persistence is provided through a named Docker volume:
+
+```
+mysql_data
+```
+
+This ensures data remains available across container restarts and rebuilds.
+
+---
+
+## Interactive Testing UI
+
+The repository includes a lightweight frontend interface built with:
+
+* HTML
+* CSS
+* JavaScript
+
+The UI mirrors the authentication workflow and provides a simple way to explore the system without manually crafting requests.
 
 ---
 
 ## Testing
 
-Implemented using Jest and Supertest.
+Testing is implemented using Jest and Supertest.
 
 Coverage includes:
 
-* Signup → login → access flow
-* Cookie-based session persistence
+* User registration
+* User login
+* Cookie handling
 * Protected route authorization
-* Token refresh flow
-* Logout and invalidation
+* Refresh token rotation
+* Logout flow
+* Session invalidation
 
 ---
 
 ## Getting Started
 
-### Clone repository
+### Clone Repository
 
 ```
 git clone https://github.com/DevAbdul001/auth-sys
 cd auth-sys
 ```
 
-### Install dependencies
+---
+
+### Environment Variables
 
 ```
-npm install
-```
+PORT=
 
-### Environment variables
-
-```
 DB_HOST=
 DB_USER=
 DB_PASSWORD=
@@ -197,15 +297,49 @@ COOKIE_SECRET=
 CORS_ORIGINS=
 ```
 
-### Run application
+---
+
+### Run with Docker
+
+Build and start all services:
+
+```
+docker compose up --build
+```
+
+Start services:
+
+```
+docker compose up
+```
+
+Stop services:
+
+```
+docker compose down
+```
+
+---
+
+### Run Without Docker
+
+Install dependencies:
+
+```
+npm install
+```
+
+Start the application:
 
 ```
 node server.js
 ```
 
-### Run tests
+---
 
-```bash
+### Run Tests
+
+```
 npm test
 ```
 
@@ -213,49 +347,54 @@ npm test
 
 ## API Endpoints
 
-| Method | Route                                   | Description          |
-| ------ | --------------------------------------- | -------------------- |
-| POST   | /api/auth/signup                        | Register user        |
-| POST   | /api/auth/signin                        | Login user           |
-| GET    | /api/auth/me                            | Get current user     |
-| POST   | /api/auth/refresh-token                 | Refresh access token |
-| PATCH  | /api/auth/refresh-token/revoke/:user_id | Revoke sessions      |
-| POST   | /api/auth/signout                       | Logout user          |
-| DELETE | /api/auth/delete                        | Delete user          |
+| Method | Route                                   | Description           |
+| ------ | --------------------------------------- | --------------------- |
+| POST   | /api/auth/signup                        | Register user         |
+| POST   | /api/auth/signin                        | Authenticate user     |
+| GET    | /api/auth/me                            | Retrieve current user |
+| POST   | /api/auth/refresh-token                 | Refresh access token  |
+| PATCH  | /api/auth/refresh-token/revoke/:user_id | Revoke sessions       |
+| POST   | /api/auth/signout                       | Logout user           |
+| DELETE | /api/auth/delete                        | Delete user           |
 
 ---
 
 ## Tradeoffs and Limitations
 
-* Single database instance (no horizontal scaling)
-* No distributed cache layer (e.g. Redis)
+* Single MySQL instance
+* No distributed cache layer
 * Basic RBAC implementation
-* Token revocation not optimized for high-scale systems
+* Session storage is database-backed
+* Not optimized for high-volume horizontal scaling
 
 ---
 
 ## Future Improvements
 
-* Redis-based session storage
-* OAuth (Google, GitHub) integration
-* Email verification flow
-* Multi-device session tracking
-* Improved audit logging and analytics
+* Redis-backed session storage
+* OAuth integration
+* Email verification workflow
+* Multi-device session management
+* Advanced audit reporting
 
 ---
 
 ## What This Project Demonstrates
 
-* Authentication system design beyond basic JWT login
-* Session lifecycle management
+* Authentication system design
+* Token lifecycle management
+* Refresh token rotation
+* Session revocation strategies
+* Cookie-based authentication
+* Role-based access control
+* Layered backend architecture
 * Secure API design patterns
-* Separation of concerns in backend architecture
-* Practical understanding of token-based authentication systems
+* Automated testing
+* Docker containerization
+* MySQL persistence and initialization
 
 ---
 
 ## License
 
 MIT
-
----
